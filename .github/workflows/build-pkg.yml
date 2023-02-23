@@ -57,8 +57,21 @@ jobs:
                   --sign "$SIGNING_IDENTITY" \
                   --min-os-version "$MIN_OS" \
                   --filter .DS_Store \
+                  --filter "(.*)/Library/Homebrew/test/support/fixtures/" \
                   --version ${{ steps.print-version.outputs.version }} \
                   Homebrew-${{ steps.print-version.outputs.version }}.pkg
+          # Note: `Library/Homebrew/test/support/fixtures/` contains unsigned binaries.
+          #        It needs to be excluded for notarization.
+      - name: Notarize package
+        env:
+          APPLE_ID_USERNAME: ${{ secrets.APPLE_ID_USERNAME }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+        run: |
+          xcrun notarytool submit Homebrew-${{ steps.print-version.outputs.version }}.pkg \
+                --apple-id "$APPLE_ID_USERNAME" \
+                --team-id "$SIGNING_IDENTITY" \
+                --password "$APPLE_ID_PASSWORD" \
+                --wait
       - uses: actions/upload-artifact@v3
         with:
           name: Homebrew ${{ steps.print-version.outputs.version }}
