@@ -12,12 +12,12 @@ jobs:
   build:
     runs-on: macos-12
     env:
-      IDENTIFIER: sh.brew.Homebrew
+      IDENTIFIER: dev.tetra2000.brew
       TMP_PATH: /tmp/brew
       MIN_OS: '11.0'
       # Please replace with your team ID.
       # https://developer.apple.com/help/account/manage-your-team/locate-your-team-id/
-      SIGNING_IDENTITY: '***'
+      SIGNING_IDENTITY: '788YH48Y3Q'
     steps:
       - uses: actions/checkout@v3
         with:
