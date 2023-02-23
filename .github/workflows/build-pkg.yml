@@ -12,9 +12,12 @@ jobs:
   build:
     runs-on: macos-12
     env:
-      IDENTIFIER: sh.brew.Homebrew
+      IDENTIFIER: dev.tetra2000.brew
       TMP_PATH: /tmp/brew
       MIN_OS: '11.0'
+      # Please replace with your team ID.
+      # https://developer.apple.com/help/account/manage-your-team/locate-your-team-id/
+      SIGNING_IDENTITY: '788YH48Y3Q'
     steps:
       - uses: actions/checkout@v3
         with:
@@ -24,16 +27,51 @@ jobs:
         id: print-version
         run: |
           echo "version=$(git -C brew describe --tags --always)" > $GITHUB_OUTPUT
+      - name: Install the Apple certificate
+        env:
+          PKG_BUILD_CERTIFICATE_BASE64: ${{ secrets.PKG_BUILD_CERTIFICATE_BASE64 }}
+          PKG_BUILD_P12_PASSWORD: ${{ secrets.PKG_BUILD_P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          # create variables
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          
+          # import certificate
+          echo -n "$PKG_BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+
+          # create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          
+          # import certificate to keychain
+          security import $CERTIFICATE_PATH -P "$PKG_BUILD_P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
       - name: Build package
         run: |
          pkgbuild --root brew \
                   --scripts brew/package/scripts \
                   --install-location "$TMP_PATH" \
                   --identifier "$IDENTIFIER" \
+                  --sign "$SIGNING_IDENTITY" \
                   --min-os-version "$MIN_OS" \
                   --filter .DS_Store \
+                  --filter "(.*)/Library/Homebrew/test/support/fixtures/" \
                   --version ${{ steps.print-version.outputs.version }} \
                   Homebrew-${{ steps.print-version.outputs.version }}.pkg
+          # Note: `Library/Homebrew/test/support/fixtures/` contains unsigned binaries.
+          #        It needs to be excluded for notarization.
+      - name: Notarize package
+        env:
+          APPLE_ID_USERNAME: ${{ secrets.APPLE_ID_USERNAME }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+        run: |
+          xcrun notarytool submit Homebrew-${{ steps.print-version.outputs.version }}.pkg \
+                --apple-id "$APPLE_ID_USERNAME" \
+                --team-id "$SIGNING_IDENTITY" \
+                --password "$APPLE_ID_PASSWORD" \
+                --wait
       - uses: actions/upload-artifact@v3
         with:
           name: Homebrew ${{ steps.print-version.outputs.version }}
